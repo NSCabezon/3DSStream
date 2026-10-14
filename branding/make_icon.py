@@ -4,8 +4,8 @@
 
 Depth (Liquid Glass parallax), back to front:
   document fill  dark navy background
-  group "Streaming"  "STREAMING" (DIN Condensed Bold), white
-  group "3D"         "3D" (Arial Black): white face over a red copy shifted left and a cyan
+  group "Streaming"  "STREAMING" (Oswald SemiBold), white
+  group "3D"         "3D" (Archivo Black): white face over a red copy shifted left and a cyan
                      copy shifted right (the anaglyph look of the HOME banner)
 Layers are SVGs (full 1024x1024 canvas each, so they stay aligned) built from the font
 outlines with fontTools. Icon Composer lists groups front-first in icon.json.
@@ -27,8 +27,9 @@ PREVIEW = os.path.join(HERE, "3DStreaming_1024.png")
 ICTOOL = ("/Applications/Xcode.app/Contents/Applications/Icon Composer.app"
           "/Contents/Executables/ictool")
 
-FONT_BIG = "/System/Library/Fonts/Supplemental/Arial Black.ttf"
-FONT_SMALL = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
+FONTS = os.path.join(HERE, "..", "3ds", "resource", "fonts")  # vendored, SIL OFL 1.1
+FONT_BIG = os.path.join(FONTS, "ArchivoBlack-Regular.ttf")
+FONT_SMALL = os.path.join(FONTS, "Oswald-SemiBold.ttf")  # Oswald[wght] instanced at 600
 
 S = 1024
 BG = "extended-srgb:0.08627,0.09412,0.14902,1.00000"   # #161826, as the banner
@@ -39,7 +40,7 @@ WHITE, RED, CYAN, SUB = "#F5F5FA", "#F2243A", "#29DBEB", "#EBEDF7"
 LOGO_W, LOGO_CY = 640, 440      # "3D" width and vertical centre
 ANA_DX = 16                     # red/cyan offset
 SUB_W, SUB_CY = 470, 700        # "STREAMING"
-SUB_TRACKING = 0.12             # extra letter spacing, in cap heights
+SUB_TRACKING = 0.08             # extra letter spacing, in cap heights
 
 try:
     from fontTools.ttLib import TTFont

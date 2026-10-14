@@ -8,8 +8,8 @@ through the origin, because HOME Menu spins banner models 360 deg around it:
   - a dark rounded-rectangle card (no full-bleed background: HOME masks the banner area
     with an oval), z = -0.2..+0.2, with a thin red (left) / cyan (right) rim on each face;
   - on each face, readable from its own side (the back is the front rotated 180 deg):
-    "3D" (Arial Black) extruded 1.4 out of the card, white face, red left-facing sides,
-    cyan right-facing sides, slate top/bottom; "STREAMING" (DIN Condensed Bold) 0.25 thick.
+    "3D" (Archivo Black) extruded 1.4 out of the card, white face, red left-facing sides,
+    cyan right-facing sides, slate top/bottom; "STREAMING" (Oswald SemiBold) 0.25 thick.
 The whole badge is scaled so its projection stays inside the oval at every spin angle.
 
 Pipeline: glyph outlines (fontTools) -> flattened contours -> earcut caps + extruded sides
@@ -43,8 +43,9 @@ OUT_GLB = os.path.join(TOOLS, "banner.glb")
 OUT_CGFX = os.path.join(ROOT, "resource", "banner.cgfx")
 CGFX_MAX = 0x80000
 
-FONT_BIG = "/System/Library/Fonts/Supplemental/Arial Black.ttf"
-FONT_SMALL = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
+FONTS = os.path.join(ROOT, "resource", "fonts")  # vendored, SIL Open Font License 1.1
+FONT_BIG = os.path.join(FONTS, "ArchivoBlack-Regular.ttf")
+FONT_SMALL = os.path.join(FONTS, "Oswald-SemiBold.ttf")  # Oswald[wght] instanced at 600
 
 # HOME Menu banner camera (pycgfx banner-camera.gltf)
 CAM_POS = (0.0, 1.0, 44.786)
@@ -53,12 +54,12 @@ CAM_ASPECT = 400 / 240
 CAM_ZNEAR = 26.5
 
 # Layout (badge-local units, before the fit-to-oval scale)
-LOGO_CAP = 7.2          # "3D" cap height
+LOGO_CAP = 7.0          # "3D" cap height (Archivo Black runs ~3% wider than the old face)
 LOGO_DEPTH = 1.4        # "3D" extrusion out of each card face
-SUB_CAP = 2.25          # "STREAMING" cap height
-SUB_TRACKING = 0.12     # extra letter spacing, in cap heights
+SUB_CAP = 2.12          # "STREAMING" cap height
+SUB_TRACKING = 0.08     # extra letter spacing, in cap heights
 SUB_DEPTH = 0.25
-LINE_GAP = 1.275        # between the bottom of "3D" and the top of "STREAMING"
+LINE_GAP = 1.45         # between the bottom of "3D" and the top of "STREAMING"
 CARD_THICK = 0.4
 CARD_PAD = 0.08         # padding around logo + subtitle, fraction of the content size
 CARD_RADIUS = 1.6       # corner radius
