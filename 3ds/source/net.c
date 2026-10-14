@@ -1,5 +1,6 @@
 #include "net.h"
 #include "log.h"
+#include "audio.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -23,6 +24,7 @@
 
 #define MSG_VIDEO_AU     0x01
 #define MSG_HELLO        0x02
+#define MSG_AUDIO        0x03
 #define MSG_KEYFRAME_REQ 0x10
 #define MSG_LOG          0x20
 #define LOG_CHUNK        (64 * 1024)
@@ -58,6 +60,7 @@ typedef struct {
     u32    dst_cap;
     NetAU* slot;
     char   name[NET_NAME_MAX];
+    u8     audio[AUDIO_MAX_PAYLOAD];
 } Rx;
 
 static u8 discard_buf[4096];
@@ -301,6 +304,11 @@ static bool rx_begin_payload(Rx* rx)
             keyframe_req = true;
         }
         LightLock_Unlock(&lock);
+    } else if (rx->type == MSG_AUDIO) {
+        if (rx->len <= AUDIO_MAX_PAYLOAD) {  // oversize audio is skipped, not fatal
+            rx->dst = rx->audio;
+            rx->dst_cap = AUDIO_MAX_PAYLOAD;
+        }
     } else if (rx->type == MSG_HELLO) {
         memset(rx->name, 0, sizeof(rx->name));
         rx->dst = (u8*)rx->name;
@@ -315,6 +323,8 @@ static void rx_finish_message(Rx* rx)
         rx->slot->size = rx->len;
         deliver_au(rx->slot);
         rx->slot = NULL;
+    } else if (rx->type == MSG_AUDIO && rx->dst) {
+        audio_push(rx->audio, rx->len);
     } else if (rx->type == MSG_HELLO) {
         LightLock_Lock(&lock);
         u32 n = rx->len < NET_NAME_MAX ? rx->len : NET_NAME_MAX;
@@ -416,7 +426,7 @@ static void net_thread(void* arg)
         int n = poll(fds, 2, POLL_MS);
         if (n < 0) {
             // Listener died (e.g. WiFi dropped); rebuild everything.
-            if (csock >= 0) { close(csock); csock = -1; rx_reset(&rx); }
+            if (csock >= 0) { close(csock); csock = -1; rx_reset(&rx); audio_reset(); }
             close(lsock);
             lsock = -1;
             svcSleepThread(100000000LL);
@@ -432,6 +442,7 @@ static void net_thread(void* arg)
                 int rcvbuf = 256 * 1024;
                 setsockopt(csock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
                 rx_reset(&rx);
+                audio_reset();
                 on_new_client();
                 log_line("net: sender connected");
                 send_postmortem(csock);
@@ -444,6 +455,7 @@ static void net_thread(void* arg)
                 close(csock);
                 csock = -1;
                 rx_reset(&rx);
+                audio_reset();
                 set_state(NET_IDLE);
             }
         }

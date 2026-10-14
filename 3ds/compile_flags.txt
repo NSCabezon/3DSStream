@@ -7,3 +7,4 @@ armv6k-none-eabi
 /opt/devkitpro/devkitARM/arm-none-eabi/include
 -Iinclude
 -Isource
+-I/opt/devkitpro/portlibs/3ds/include

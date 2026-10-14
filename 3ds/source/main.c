@@ -9,6 +9,7 @@
 
 #include <3ds.h>
 
+#include "audio.h"
 #include "decode.h"
 #include "log.h"
 #include "net.h"
@@ -108,6 +109,18 @@ static void draw_status(const UiStats* ui)
     else
         line(15, "MVD: waiting for keyframe");
     line(16, "Last err: %s 0x%08lx", di.last_step, (unsigned long)di.last_error);
+
+    AudioStats as;
+    audio_get_stats(&as);
+    if (as.state == AUDIO_NO_DSP)
+        line(14, "Audio: no DSP firmware (dspfirm.cdc)");
+    else {
+        // The console font has no per-mille sign: "+3/1000".
+        line(14, "Audio: %s %lums (now %lums)", audio_state_name(as.state),
+             (unsigned long)as.level_ms, (unsigned long)as.buffered_ms);
+        line(17, "Audio rate: %+ld/1000  U%lu D%lu", (long)as.rate_permille,
+             (unsigned long)as.underruns, (unsigned long)as.dropped);
+    }
     line(18, "3D slider: %3d%%  Eyes: %s", (int)(osGet3DSliderState() * 100.0f),
          swap_eyes ? "swapped" : "normal");
     line(20, "START exit  Y keyframe  X swap eyes");
@@ -210,10 +223,12 @@ static void print_tail(const char* text, u32 len, int n)
     }
 }
 
-// Start screen: previous run's log tail + strategy selection. Returns false on START.
+// Start screen: previous run's log tail + strategy selection. Starts mode B by itself
+// after 1.5 s unless a button is pressed. Returns false on START.
 static bool select_mode(const char* prev, u32 prev_len)
 {
     int last = read_mode_file();
+    u64 deadline = osGetTime() + 1500;   // 0 once the countdown is cancelled
     consoleClear();
     if (prev) {
         printf("\x1b[33mPrevious log (log_prev.txt):\x1b[0m\n");
@@ -224,15 +239,25 @@ static bool select_mode(const char* prev, u32 prev_len)
     printf("\n\x1b[36mA\x1b[0m direct-to-fb  \x1b[36mB\x1b[0m eye buf+memcpy\n");
     printf("\x1b[36mX\x1b[0m topos AU 565   \x1b[36mY\x1b[0m topos AU ABGR32\n");
     printf("Hold L = slow motion. START = exit.\n");
-    printf("Last choice: %s", last >= 0 ? decode_mode_name((DecMode)last) : "-");
+    printf("Last choice: %s\n", last >= 0 ? decode_mode_name((DecMode)last) : "-");
+    printf("Starting B in 1.5 s (any button = wait)");
 
     while (aptMainLoop()) {
         gspWaitForVBlank();
         hidScanInput();
         u32 down = hidKeysDown();
         if (down & KEY_START) return false;
+        if (deadline && !down && !hidKeysHeld() && osGetTime() >= deadline) {
+            dec_mode = DEC_MODE_B;
+            slow_motion = false;
+            return true;
+        }
         int m = (down & KEY_A) ? DEC_MODE_A : (down & KEY_B) ? DEC_MODE_B
               : (down & KEY_X) ? DEC_MODE_X : (down & KEY_Y) ? DEC_MODE_Y : -1;
+        if (down && m < 0 && deadline) {
+            deadline = 0;
+            printf("\r%-39s", "Waiting for A/B/X/Y...");
+        }
         if (m >= 0) {
             dec_mode = (DecMode)m;
             slow_motion = hidKeysHeld() & KEY_L;
@@ -260,7 +285,7 @@ int main(void)
     osSetSpeedupEnable(true);
 
     log_open();
-    log_line("3DSStream diagnostics build " __DATE__ " " __TIME__);
+    log_line("3DSStream build " __DATE__ " " __TIME__);
 
     // Clear both eyes of both top buffers to black (logging both double-buffer halves).
     for (int i = 0; i < 2; i++) {
@@ -288,6 +313,7 @@ int main(void)
 
     net_set_postmortem(prev, prev_len);
     bool dec_ok = decode_init(dec_mode);
+    audio_start();   // before net_start: the network thread feeds it. Failure is not fatal.
     bool net_ok = dec_ok && net_start();
     if (net_ok)
         log_line("buf %-8s va=%08lx size=%lu (heap, not linear)", "soc", (unsigned long)(u32)net_soc_buffer(),
@@ -297,6 +323,7 @@ int main(void)
         printf(!dec_ok ? "Out of linear memory.\n" : "Network init failed.\n");
         wait_for_start();
         net_stop();
+        audio_stop();
         decode_exit();
         free(prev);
         log_close();
@@ -344,6 +371,7 @@ int main(void)
 
     log_line("exit");
     net_stop();
+    audio_stop();
     decode_exit();
     free(prev);
     log_close();

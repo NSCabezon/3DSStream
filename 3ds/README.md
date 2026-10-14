@@ -12,7 +12,7 @@ eyes per frame; kept for comparison). Protocol and video format: `../docs/ARCHIT
 You need devkitPro with the 3DS toolchain:
 
 ```sh
-sudo dkp-pacman -S 3ds-dev
+sudo dkp-pacman -S 3ds-dev 3ds-libopus
 export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM
 make            # -> 3DSStream.3dsx
 ```
@@ -41,6 +41,15 @@ The Makefile uses `makerom` / `bannertool` from `PATH` if they are there, otherw
   `3dslink -a <3DS IP> 3DSStream.3dsx`.
 
 Old 3DS models are refused at startup (no MVD hardware decoder).
+
+**Audio** (Opus over the same connection, played with ndsp) needs the DSP firmware dump at
+`sdmc:/3ds/dspfirm.cdc` (create it once with the *DSP1* homebrew). Without it the bottom
+screen shows "Audio: no DSP firmware" and video still works.
+
+At startup the previous run's log is shown and mode **B** starts automatically after 1.5 s;
+press A/B/X/Y (hold L for slow motion) to pick a diagnostic decode strategy instead. Logs go
+to `sdmc:/3ds/3DSStream/log.txt`; the previous one is uploaded to each new sender
+(`send_test.py` saves it under `tools/logs/`).
 
 ## Use
 

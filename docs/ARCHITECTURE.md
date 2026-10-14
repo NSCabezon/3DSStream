@@ -74,6 +74,7 @@ Types:
 |---|---|---|---|
 | `0x01` VIDEO_AU | sender→3DS | one H.264 access unit, Annex-B (start codes `00 00 00 01` or `00 00 01`) | flags: bit0 (0x01) keyframe (AU contains IDR); bit1 (0x02) eye in alternating layout, 0 = left / 1 = right; bit2 (0x04) layout, 1 = alternating, 0 = stacked. Max payload 512 KiB. |
 | `0x02` HELLO | sender→3DS | UTF-8 sender name (≤ 64 B) | optional, first message |
+| `0x03` AUDIO | sender→3DS | `u64` BE timestamp in µs (sender clock, same clock as video capture) + one **Opus** packet | 48 kHz, stereo (mono senders upmix or send mono Opus — the decoder outputs stereo either way), 20 ms frames, ~96 kbps CBR/VBR. flags unused (0). Max payload 4 KiB. |
 | `0x10` KEYFRAME_REQ | 3DS→sender | empty | sent on connect, after decode error, or after dropping frames |
 
 Rules:
@@ -82,6 +83,27 @@ Rules:
 - Latency control: receiver keeps ≤ 2 queued AUs; if more pile up it drops until the next
   keyframe and sends KEYFRAME_REQ. Sender drops non-key frames if its send buffer backs up.
 - Bad magic / oversize length → receiver closes the connection.
+
+## Hardware findings (New 3DS XL, 2026-10-14)
+
+- **MVD only decodes single-slice pictures.** Multi-slice frames (x264 `-tune zerolatency`
+  defaults to one slice per thread) return INCOMPLETEPROCESSING / 0x17005 and the next IDR
+  crashes the `mvd` sysmodule. Senders MUST emit exactly one slice per frame
+  (x264: `sliced-threads=0:slices=1`).
+- **SPS/PPS are fed to MVD once** (re-fed only if they change), although senders repeat them.
+- **WiFi delivers AUs in bursts.** The receiver allows up to 12 pending AUs (200 ms at 60 fps)
+  before flushing to the next IDR; with 2 it dropped to ~1 fps. Receiver payload cap 256 KiB.
+- Measured: alternating 240×400 @ 60 fps (30 stereo pairs) at ~2.5 Mbps → 25–29 pairs/s shown.
+
+## Audio
+
+- Opus, 48 kHz, stereo out, 20 ms packets, sent as AUDIO messages interleaved with video on the
+  same TCP connection.
+- 3DS: decoded with libopus (devkitPro `3ds-libopus`) on an audio thread, played with `ndsp`
+  (needs `sdmc:/3ds/dspfirm.cdc`), ~100 ms jitter buffer; if the buffer underruns, insert
+  silence; if it exceeds ~300 ms, drop oldest packets. A/V sync v1 = play on arrival (both
+  streams have similar latency); timestamps are carried for a later sync pass.
+- CIA RSF needs `dsp::DSP` service access.
 
 ## 3DS receiver notes
 

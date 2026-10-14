@@ -38,7 +38,8 @@ void log_close(void)
 void log_line(const char* fmt, ...)
 {
     if (fd < 0) return;
-    if (lines >= VERBOSE_LINES && strncmp(fmt, "ERROR", 5) != 0 && strncmp(fmt, "net:", 4) != 0)
+    if (lines >= VERBOSE_LINES && strncmp(fmt, "ERROR", 5) != 0 && strncmp(fmt, "net:", 4) != 0 &&
+        strncmp(fmt, "audio:", 6) != 0)
         return;
     lines++;
     char buf[320];

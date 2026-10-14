@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Fake Vision Pro sender: encodes a pre-rotated stereo test stream and sends it to a 3DS
-(or recv_sim.py) using the S3DS protocol.
+"""Fake Vision Pro sender: encodes a pre-rotated stereo test stream (plus Opus audio: the
+file's soundtrack, or a 440 Hz tone with a beep every second for the pattern) and sends it
+to a 3DS (or recv_sim.py) using the S3DS protocol.
 
 Layouts:
   alternating (default): one eye per frame, 240x400, L,R,L,R... at 2x fps. IDRs only on
@@ -8,8 +9,10 @@ Layouts:
   stacked:               240x800 per frame, left eye on top, at fps."""
 import argparse
 import os
+import queue
 import select
 import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -44,7 +47,9 @@ def combine(args, left, right):
             "[li][ri]interleave[v]" % (left, rate, right, rate))
 
 
-def build_ffmpeg_cmd(args):
+def build_ffmpeg_cmd(args, audio_fd=None):
+    """Video (Annex-B H.264) goes to stdout; if audio_fd is given, Ogg Opus audio goes to
+    that inherited pipe (same ffmpeg process, so both share the same -re pacing)."""
     fps = args.fps
     out_fps = 2 * fps if args.layout == "alternating" else fps
     # Even GOP length, no scene-cut IDRs: every keyframe lands on a left (even) frame.
@@ -63,7 +68,11 @@ def build_ffmpeg_cmd(args):
         ) + combine(args, "lr", "rr")
         cmd += ["-re", "-f", "lavfi", "-i", "testsrc2=s=400x240:r=%d" % fps,
                 "-re", "-f", "lavfi", "-i", "color=c=red:s=40x40:r=%d" % fps]
+        # 440 Hz tone with a beep at the start of every second (judge A/V sync against the
+        # test pattern's seconds counter).
+        cmd += ["-re", "-f", "lavfi", "-i", "sine=frequency=440:beep_factor=4:sample_rate=48000"]
         cmd += ["-filter_complex", fc]
+        audio_map = "2:a"
     else:
         cmd += ["-re"]
         if args.loop:
@@ -78,6 +87,7 @@ def build_ffmpeg_cmd(args):
         else:
             fc = "[0:v]fps=%d,%s,split[lr][rr];" % (fps, eye_tail) + combine(args, "lr", "rr")
         cmd += ["-filter_complex", fc]
+        audio_map = "0:a:0?"  # files without audio just produce an empty Ogg stream
     cmd += [
         "-map", "[v]", "-an",
         "-c:v", "libx264", "-profile:v", "baseline", "-preset", "ultrafast",
@@ -90,7 +100,53 @@ def build_ffmpeg_cmd(args):
         "sliced-threads=0:slices=1" % (keyint, keyint),
         "-f", "h264", "-",
     ]
+    if audio_fd is not None:
+        cmd += [
+            "-map", audio_map, "-vn",
+            "-c:a", "libopus", "-b:a", "96k", "-frame_duration", "20", "-application", "lowdelay",
+            "-ar", "48000", "-ac", "2",
+            "-page_duration", "20000", "-flush_packets", "1",  # one Ogg page per packet
+            "-f", "ogg", "pipe:%d" % audio_fd,
+        ]
     return cmd
+
+
+class OggOpusReader:
+    """Incremental Ogg demuxer: returns complete Opus packets, skipping OpusHead/OpusTags."""
+
+    def __init__(self):
+        self.buf = b""
+        self.partial = b""
+
+    def feed(self, data):
+        self.buf += data
+        out = []
+        while True:
+            p = self.buf.find(b"OggS")
+            if p < 0:
+                self.buf = self.buf[-3:]
+                return out
+            if p:
+                self.buf = self.buf[p:]
+            if len(self.buf) < 27:
+                return out
+            nseg = self.buf[26]
+            hlen = 27 + nseg
+            if len(self.buf) < hlen:
+                return out
+            lacing = self.buf[27:hlen]
+            body = hlen + sum(lacing)
+            if len(self.buf) < body:
+                return out
+            pos = hlen
+            for lace in lacing:
+                self.partial += self.buf[pos:pos + lace]
+                pos += lace
+                if lace < 255:  # packet ends in this segment
+                    pkt, self.partial = self.partial, b""
+                    if pkt and not pkt.startswith((b"OpusHead", b"OpusTags")):
+                        out.append(pkt)
+            self.buf = self.buf[body:]
 
 
 class AUParser:
@@ -129,15 +185,19 @@ class Stats:
         self.bytes = 0
         self.keys = 0
         self.drops = 0
+        self.apkts = 0
+        self.adrops = 0
 
     def tick(self, force=False):
         now = time.time()
         dt = now - self.t0
         if dt >= 1.0 or force:
-            print("[send] %.1f fps  %d kbps  keyframes %d  dropped %d"
-                  % (self.frames / dt, self.bytes * 8 / dt / 1000, self.keys, self.drops), flush=True)
+            print("[send] %.1f fps  %d kbps  keyframes %d  dropped %d  audio %.0f pkt/s (dropped %d)"
+                  % (self.frames / dt, self.bytes * 8 / dt / 1000, self.keys, self.drops,
+                     self.apkts / dt, self.adrops), flush=True)
             self.t0 = now
             self.frames = self.bytes = self.keys = self.drops = 0
+            self.apkts = self.adrops = 0
 
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -217,62 +277,130 @@ def stop_ffmpeg(proc):
         proc.wait()
 
 
+def source_has_audio(args):
+    if args.source == "pattern":
+        return True
+    probe = FFMPEG.replace("ffmpeg", "ffprobe")
+    try:
+        out = subprocess.run([probe, "-v", "error", "-select_streams", "a", "-show_entries",
+                              "stream=index", "-of", "csv=p=0", args.source],
+                             capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return bool(out.strip())
+
+
+def video_reader(proc, dump, q):
+    parser = AUParser()
+    while True:
+        data = os.read(proc.stdout.fileno(), 65536)
+        if not data:
+            q.put(("eof",))
+            return
+        if dump:
+            dump.write(data)
+        for au in parser.feed(data):
+            q.put(("v", au))
+
+
+def audio_reader(fd, q):
+    reader = OggOpusReader()
+    with os.fdopen(fd, "rb", buffering=0) as f:
+        while True:
+            data = f.read(4096)
+            if not data:
+                return
+            for pkt in reader.feed(data):
+                q.put(("a", pkt))
+
+
 def run_session(args, sock, dump):
     dead = threading.Event()
     threading.Thread(target=sock_reader, args=(sock, dead), daemon=True).start()
     sock.sendall(P.pack_message(P.TYPE_HELLO, 0, b"send_test.py"))
-    proc = subprocess.Popen(build_ffmpeg_cmd(args), stdout=subprocess.PIPE)
-    parser = AUParser()
+
+    audio = not args.no_audio and source_has_audio(args)
+    rfd = wfd = None
+    if audio:
+        rfd, wfd = os.pipe()
+    proc = subprocess.Popen(build_ffmpeg_cmd(args, wfd), stdout=subprocess.PIPE,
+                            pass_fds=(wfd,) if audio else ())
+    # Both readers feed one FIFO in arrival order and a single loop sends it, so audio and
+    # video interleave on the socket as they are produced (audio packets are tiny and
+    # never wait behind more than one video AU).
+    q = queue.Queue()
+    threading.Thread(target=video_reader, args=(proc, dump, q), daemon=True).start()
+    if audio:
+        os.close(wfd)
+        threading.Thread(target=audio_reader, args=(rfd, q), daemon=True).start()
+
     stats = Stats()
     got_key = False
     waiting_key = False
     alternating = args.layout == "alternating"
     index = -1  # AU index since ffmpeg start; alternating: even = left eye
+    audio_index = 0
+    start_us = int(time.time() * 1e6)
     try:
         while not dead.is_set():
-            data = os.read(proc.stdout.fileno(), 65536)
-            if not data:
+            try:
+                item = q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if item[0] == "eof":
                 print("[send] ffmpeg ended", flush=True)
                 return "eof"
-            if dump:
-                dump.write(data)
-            for au in parser.feed(data):
-                index += 1
-                key = P.au_is_keyframe(au)
-                right = alternating and index % 2 == 1
-                if key and right:
-                    # Must not happen with an even keyint and scenecut=0; drop until an
-                    # IDR lands on a left frame again so the receiver's pairs stay aligned.
-                    print("[send] IDR on a right-eye frame (#%d), dropping until aligned" % index,
-                          flush=True)
-                    waiting_key = True
-                    stats.drops += 1
+            if item[0] == "a":
+                pkt = item[1]
+                ts = start_us + audio_index * 20000  # 20 ms per packet
+                audio_index += 1
+                payload = struct.pack(">Q", ts) + pkt
+                if len(payload) > P.AUDIO_MAX_PAYLOAD or not select.select([], [sock], [], 0)[1]:
+                    stats.adrops += 1
                     continue
-                if not got_key and not key:
-                    continue
-                got_key = True
-                if len(au) > P.MAX_PAYLOAD:
-                    print("[send] AU too large (%d), dropped" % len(au), flush=True)
-                    waiting_key = True
-                    stats.drops += 1
-                    continue
-                if key:
-                    waiting_key = False
-                elif waiting_key:
-                    stats.drops += 1
-                    continue
-                elif not select.select([], [sock], [], 0)[1]:
-                    waiting_key = True  # send buffer backed up: drop until next keyframe
-                    stats.drops += 1
-                    continue
-                flags = P.FLAG_KEYFRAME if key else 0
-                if alternating:
-                    flags |= P.FLAG_ALTERNATING | (P.FLAG_EYE_RIGHT if right else 0)
-                sock.sendall(P.pack_message(P.TYPE_VIDEO_AU, flags, au))
-                stats.frames += 1
-                stats.bytes += len(au)
-                stats.keys += 1 if key else 0
+                sock.sendall(P.pack_message(P.TYPE_AUDIO, 0, payload))
+                stats.apkts += 1
+                stats.bytes += len(payload)
                 stats.tick()
+                continue
+
+            au = item[1]
+            index += 1
+            key = P.au_is_keyframe(au)
+            right = alternating and index % 2 == 1
+            if key and right:
+                # Must not happen with an even keyint and scenecut=0; drop until an
+                # IDR lands on a left frame again so the receiver's pairs stay aligned.
+                print("[send] IDR on a right-eye frame (#%d), dropping until aligned" % index,
+                      flush=True)
+                waiting_key = True
+                stats.drops += 1
+                continue
+            if not got_key and not key:
+                continue
+            got_key = True
+            if len(au) > P.MAX_PAYLOAD:
+                print("[send] AU too large (%d), dropped" % len(au), flush=True)
+                waiting_key = True
+                stats.drops += 1
+                continue
+            if key:
+                waiting_key = False
+            elif waiting_key:
+                stats.drops += 1
+                continue
+            elif not select.select([], [sock], [], 0)[1]:
+                waiting_key = True  # send buffer backed up: drop until next keyframe
+                stats.drops += 1
+                continue
+            flags = P.FLAG_KEYFRAME if key else 0
+            if alternating:
+                flags |= P.FLAG_ALTERNATING | (P.FLAG_EYE_RIGHT if right else 0)
+            sock.sendall(P.pack_message(P.TYPE_VIDEO_AU, flags, au))
+            stats.frames += 1
+            stats.bytes += len(au)
+            stats.keys += 1 if key else 0
+            stats.tick()
         return "dead"
     finally:
         stop_ffmpeg(proc)
@@ -288,6 +416,7 @@ def main():
                     help="alternating: one 240x400 eye per frame at 2x fps (default); "
                          "stacked: 240x800 both eyes per frame")
     ap.add_argument("--fps", type=int, default=30, help="stereo pairs per second")
+    ap.add_argument("--no-audio", action="store_true", help="do not send AUDIO (Opus) messages")
     ap.add_argument("--bitrate", default="1500k")
     ap.add_argument("--loop", action="store_true", help="loop the input file")
     ap.add_argument("--dump", metavar="FILE", help="write the raw Annex-B stream to FILE")

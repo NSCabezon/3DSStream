@@ -34,3 +34,11 @@ Without `--sbs` a file is shown flat (same image in both eyes). Reconnects with 
 
 Serves `3ds/3DSStream.cia` over HTTP and prints a QR. On the 3DS: FBI > Remote Install >
 Scan QR Code. Mac and 3DS must be on the same WiFi.
+
+## spatial_to_3ds.sh — spatial video to SBS / topos file
+
+    tools/spatial_to_3ds.sh Video/IMG_1234.MOV [3DS_IP[:5000]]
+
+Makes `<name>_sbs.mp4` (for `send_test.py --sbs`) and `<name>_3ds.mp4` (800x240 SBS for
+[topos](https://github.com/mockmodular/topos_3ds-video-player) on the 3DS). With an IP it
+uploads the latter to `sdmc:/videos/` through ftpd.

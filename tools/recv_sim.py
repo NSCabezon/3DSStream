@@ -90,15 +90,19 @@ class Conn:
         self.t0 = time.time()
         self.frames = self.bytes = self.keys = self.drops = 0
         self.eye_errors = 0
+        self.apkts = 0
+        self.abad = 0
+        self.last_ts = None
 
     def tick(self):
         now = time.time()
         dt = now - self.t0
         if dt >= 1.0:
-            print("[recv] %.1f fps  %d kbps  keyframes %d  dropped %d"
-                  % (self.frames / dt, self.bytes * 8 / dt / 1000, self.keys, self.drops), flush=True)
+            print("[recv] %.1f fps  %d kbps  keyframes %d  dropped %d  audio %.1f pkt/s  bad audio %d"
+                  % (self.frames / dt, self.bytes * 8 / dt / 1000, self.keys, self.drops,
+                     self.apkts / dt, self.abad), flush=True)
             self.t0 = now
-            self.frames = self.bytes = self.keys = self.drops = 0
+            self.frames = self.bytes = self.keys = self.drops = self.apkts = 0
 
     def read(self, n):
         buf = b""
@@ -156,6 +160,17 @@ class Conn:
                     self.bytes += n
                     self.keys += 1 if key else 0
                     self.sink.write(payload, alternating)
+                elif t == P.TYPE_AUDIO:
+                    # u64 BE timestamp (us) + one Opus packet; timestamps must increase.
+                    ok = 8 < n <= P.AUDIO_MAX_PAYLOAD
+                    if ok:
+                        ts = int.from_bytes(payload[:8], "big")
+                        ok = self.last_ts is None or ts > self.last_ts
+                        self.last_ts = ts
+                    if not ok:
+                        self.abad += 1
+                    self.apkts += 1
+                    self.bytes += n
                 elif t == P.TYPE_LOG:
                     pass  # 3DS->sender only; nothing to do in the fake receiver
                 else:

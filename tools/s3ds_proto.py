@@ -4,12 +4,14 @@ import struct
 MAGIC = b"S3DS"
 TYPE_VIDEO_AU = 0x01
 TYPE_HELLO = 0x02
+TYPE_AUDIO = 0x03  # u64 BE timestamp (us) + one Opus packet (48 kHz stereo, 20 ms)
 TYPE_KEYFRAME_REQ = 0x10
 TYPE_LOG = 0x20  # 3DS -> sender: previous run's diagnostic log (text, chunks <= 64 KiB)
 FLAG_KEYFRAME = 0x01     # AU contains an IDR
 FLAG_EYE_RIGHT = 0x02    # alternating layout: 0 = left eye, 1 = right eye
 FLAG_ALTERNATING = 0x04  # 1 = alternating 240x400 eyes (L,R,L,R...), 0 = stacked 240x800
 MAX_PAYLOAD = 512 * 1024
+AUDIO_MAX_PAYLOAD = 4096
 PORT = 7777
 HEADER_LEN = 12
 

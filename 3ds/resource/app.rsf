@@ -176,6 +176,7 @@ AccessControlInfo:
    - APT:U
    - ac:u
    - cfg:u
+   - dsp::DSP
    - fs:USER
    - gsp::Gpu
    - gsp::Lcd
@@ -195,6 +196,7 @@ SystemControlInfo:
   Dependency:
     ac: 0x0004013000002402
     cfg: 0x0004013000001702
+    dsp: 0x0004013000001a02
     gsp: 0x0004013000001c02
     hid: 0x0004013000001d02
     mvd: 0x0004013020004102
