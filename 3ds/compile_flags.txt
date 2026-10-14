@@ -1,0 +1,9 @@
+-target
+armv6k-none-eabi
+-std=gnu11
+-D__3DS__
+-I/opt/devkitpro/libctru/include
+-isystem
+/opt/devkitpro/devkitARM/arm-none-eabi/include
+-Iinclude
+-Isource

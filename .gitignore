@@ -1,0 +1,18 @@
+# devkitARM
+3ds/build/
+*.3dsx
+*.smdh
+*.elf
+*.cia
+3ds/.tools/
+# Xcode
+visionos/*.xcodeproj/
+DerivedData/
+xcuserdata/
+.build/
+# misc
+.DS_Store
+__pycache__/
+*.h264
+Video/
+tools/logs/
