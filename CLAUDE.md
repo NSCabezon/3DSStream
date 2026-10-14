@@ -59,12 +59,23 @@ the user finds realistic: they have no 3D display.
 
 ## Status (2026-10-14)
 
-Done and confirmed on hardware: the receiver (video + Opus audio + 3D HOME banner), S3DSKit, and
-the tools. Split into two repos, both MIT (this one and `~/Apps/S3DSKit`). Still pending:
-- integrating S3DSKit into the user's own visionOS app. Don't touch other
-  repos without the user's OK.
-- checking on a real Vision Pro that the hardware H.264 encoder outputs one slice per frame. A
-  DEBUG build asserts in `H264Encoder` if it doesn't.
+Published: github.com/NSCabezon/3DSStream (release v1.0.0 with the CIA). Sender library:
+github.com/NSCabezon/S3DSKit (release 0.1.0), local checkout `~/Apps/S3DSKit`.
+
+Confirmed on hardware: the receiver (video + Opus audio + 3D HOME banner), the tools, and S3DSKit
+streaming from a real Vision Pro app. Fixed after that first real-app test: the right eye showed an
+older moment than the left. The cause was the VideoToolbox SPS lacking bitstream_restriction; the
+receiver now patches every SPS (`sps.c`, commit bf56fe5) and S3DSKit rewrites its own.
+
+Open:
+- In that real-app test the 3DS showed ~88 decoded fps (44 pairs) at 2.4 Mbps with drops, and audio
+  arriving faster than real time (rate pegged at +2 %, hundreds of audio drops). The app had been
+  built against the pre-split S3DSKit. S3DSKit now has a deadline throttle and audio-rate stats
+  (`audioInputFramesPerSecond`, `audioPacketsPerSecond`). Retest with a fresh build before
+  changing the receiver.
+- Whether the Vision Pro's hardware encoder honours `NumberOfSlices = 1` (a DEBUG build asserts if
+  not).
+- Don't modify the user's app repos without their OK.
 
 ## Delegation
 
