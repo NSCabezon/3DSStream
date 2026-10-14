@@ -35,6 +35,37 @@ Zero warnings in all builds. Test on the device by serving the CIA with `tools/s
 (FBI → Remote Install → QR). After a crash, the 3DS uploads the previous session's log on the
 next connection (`tools/logs/`).
 
+## Device workflow (New 3DS XL, Luma3DS + FBI)
+
+- Install a build: `tools/serve_cia.sh`, then `open 3ds/build/cia_qr.png`. On the 3DS: FBI → Remote
+  Install → Scan QR Code. Afterwards stop the server with `pkill -f "http.server 8080"`.
+- The 3DS's IP is shown on its bottom screen (it has been 192.168.1.95). Stream to it with
+  `python3 tools/send_test.py --host <IP> [--source X_sbs.mp4 --sbs --loop]`.
+- Files to the SD card: the user opens ftpd (port 5000), then
+  `curl --ftp-create-dirs -T file ftp://<IP>:5000/<path>`. Converted spatial videos go in
+  `/videos/` and play locally with topos.
+- After a crash: ask for a photo of the Luma exception screen (process, PC, FAR). The previous
+  session's log comes back on the next connection, saved by send_test in `tools/logs/`. To fetch
+  the log without sending video (and crashing again), connect and only read LOG (0x20) messages.
+- `sudo` installs (devkitPro packages) have to be run by the user in Terminal.app; the `!`
+  prefix gives sudo no TTY.
+
+## Visual assets
+
+For the banner, the logo or anything visual: regenerate previews first
+(`3ds/scripts/make_banner_model.py --previews`), open `3ds/preview/banner.usdz` in Quick Look
+(`qlmanage -p`), and **build/serve the CIA only after the user approves**. USDZ is the only preview
+the user finds realistic: they have no 3D display.
+
+## Status (2026-10-14)
+
+Done and confirmed on hardware: the receiver (video + Opus audio + 3D HOME banner), S3DSKit, and
+the tools. Still pending:
+- integrating S3DSKit into `~/Apps/tc-visionos` (`FramePump.pump` + core audio). Don't touch that
+  repo without the user's OK.
+- checking on a real Vision Pro that the hardware H.264 encoder outputs one slice per frame. A
+  DEBUG build asserts in `H264Encoder` if it doesn't.
+
 ## Delegation
 
 - Delegation to `fast-worker` is fine for: tools/ scripts, docs, banner art.
