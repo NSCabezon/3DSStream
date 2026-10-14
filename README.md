@@ -1,4 +1,11 @@
+<p align="center"><img src="branding/logo_320.png" width="160" alt="3D Streaming logo"></p>
+
 # 3D Streaming
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform: New Nintendo 3DS](https://img.shields.io/badge/platform-New%203DS-red)
+![Sender: visionOS · macOS](https://img.shields.io/badge/sender-visionOS%20%C2%B7%20macOS-lightgrey)
+[![Latest release](https://img.shields.io/github/v/release/NSCabezon/3DSStream)](https://github.com/NSCabezon/3DSStream/releases/latest)
 
 Stream stereoscopic 3D video and audio to a **New Nintendo 3DS**, shown glasses-free on its
 top screen. The sender is a visionOS app using the **[S3DSKit](https://github.com/NSCabezon/S3DSKit)**
@@ -31,12 +38,16 @@ Measured on a New 3DS XL: **29.9 stereo pairs/s** (60 decoded frames/s), 0 decod
 
 ## Quick start
 
-1. **Install the receiver on the 3DS**
-   ```sh
-   cd 3ds && make cia && cd ..
-   tools/serve_cia.sh            # prints a QR code
-   ```
-   On the 3DS: FBI → Remote Install → Scan QR Code. "3D Streaming" appears on the HOME Menu.
+1. **Install the receiver on the 3DS.** Either way, "3D Streaming" then shows up on the HOME Menu.
+   - **No build needed:** download `3DSStream.cia` from the
+     [latest release](https://github.com/NSCabezon/3DSStream/releases/latest), copy it to the SD
+     card and install it with FBI (or use the `.3dsx` with the Homebrew Launcher).
+   - **From source:**
+     ```sh
+     cd 3ds && make cia && cd ..
+     tools/serve_cia.sh            # prints a QR code
+     ```
+     On the 3DS: FBI → Remote Install → Scan QR Code.
 2. **Open it.** After 1.5 s it starts listening; the bottom screen shows its IP.
 3. **Send something from the Mac**
    ```sh
