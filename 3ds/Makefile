@@ -40,7 +40,7 @@ GRAPHICS	:=	gfx
 GFXBUILD	:=	$(BUILD)
 ROMFS		:=
 
-APP_TITLE		:=	3DSStream
+APP_TITLE		:=	3D Streaming
 APP_DESCRIPTION	:=	Stereo 3D stream receiver
 APP_AUTHOR		:=	nscabezon
 ICON			:=	resource/icon.png
@@ -57,8 +57,18 @@ APP_UNIQUE_ID		:=	0xF3D5A
 APP_VERSION_MAJOR	:=	1
 APP_VER				:=	1024
 RSF_PATH			:=	resource/app.rsf
-BANNER_IMAGE		:=	resource/banner.png
 BANNER_AUDIO		:=	resource/banner.wav
+# HOME Menu banner: the stereoscopic 3D model (scripts/make_banner_model.py) when it exists,
+# else the flat PNG (scripts/make_art.py). BANNER_FLAT=1 forces the flat one.
+# bannertool LZ11-compresses a .cgfx itself: pass the RAW file to -ci (pre-compressing
+# double-compresses and crashes HOME Menu).
+ifeq ($(filter 1,$(BANNER_FLAT))$(wildcard resource/banner.cgfx),resource/banner.cgfx)
+BANNER_IMAGE		:=	resource/banner.cgfx
+BANNER_IMAGE_ARG	:=	-ci
+else
+BANNER_IMAGE		:=	resource/banner.png
+BANNER_IMAGE_ARG	:=	-i
+endif
 
 # makerom / bannertool: taken from PATH, else from .tools/ (see scripts/get_tools.sh)
 MAKEROM		?=	$(or $(shell command -v makerom 2>/dev/null),$(CURDIR)/.tools/makerom)
@@ -203,7 +213,7 @@ endif
 cia: all
 	@test -x "$(MAKEROM)" || { echo "makerom not found (run scripts/get_tools.sh)"; exit 1; }
 	@test -x "$(BANNERTOOL)" || { echo "bannertool not found (run scripts/get_tools.sh)"; exit 1; }
-	@"$(BANNERTOOL)" makebanner -i $(BANNER_IMAGE) -a $(BANNER_AUDIO) -o $(BUILD)/banner.bnr
+	@"$(BANNERTOOL)" makebanner $(BANNER_IMAGE_ARG) $(BANNER_IMAGE) -a $(BANNER_AUDIO) -o $(BUILD)/banner.bnr
 	@"$(BANNERTOOL)" makesmdh -r regionfree -s "$(APP_TITLE)" -l "$(APP_DESCRIPTION)" \
 		-p "$(APP_AUTHOR)" -i $(ICON) -f visible,allow3d,recordusage -o $(BUILD)/icon.icn
 	@"$(MAKEROM)" -f cia -o $(OUTPUT).cia -target t -exefslogo -ver $(APP_VER) \

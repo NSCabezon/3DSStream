@@ -32,6 +32,25 @@ The Makefile uses `makerom` / `bannertool` from `PATH` if they are there, otherw
 (title id `000400000F3D5A00`, homebrew range). The spec is `resource/app.rsf`; it must keep
 `mvd:STD` + the mvd module dependency, or hardware decoding fails in the .cia build.
 
+### Banner
+
+The HOME Menu banner is a stereoscopic 3D model, `resource/banner.cgfx`: an extruded
+"3D" in front of the screen (it pops out with the 3D slider and sways gently),
+"STREAMING" at screen depth and a dark backdrop behind. Regenerate it with:
+
+```sh
+python3 scripts/make_banner_model.py --preview /tmp/banner_preview.png   # [--static: no sway]
+python3 scripts/verify_cia_banner.py 3DSStream.cia resource/banner.cgfx  # after make cia
+```
+
+The script creates `.tools/venv` (fontTools, mapbox-earcut, gltflib, Pillow, numpy) and
+clones [pycgfx](https://github.com/skyfloogle/pycgfx) at a pinned commit into
+`.tools/pycgfx` (no license, so it is not vendored), builds `.tools/banner.glb` from the
+Arial Black / DIN Condensed glyph outlines and converts it. The CGFX must stay under
+512 KiB. `make cia` passes the raw `.cgfx` to `bannertool -ci` (bannertool LZ11-compresses
+it; a pre-compressed CGFX crashes HOME Menu). `make cia BANNER_FLAT=1`, or deleting
+`banner.cgfx`, falls back to the flat `resource/banner.png` (`scripts/make_art.py`).
+
 ## Install and run
 
 - **.cia (HOME Menu icon):** copy `3DSStream.cia` to the SD card and install it with **FBI**
@@ -75,4 +94,4 @@ python3 tools/send_test.py --host <3DS IP> --layout stacked   # 240x800
 - `source/net.c`: soc:U, network thread, S3DS framing, AU queue and drop/keyframe policy.
 - `source/decode.c`: MVD wrapper (Annex-B NAL split, cache maintenance, render to a
   240x800 BGR565 buffer). It has a comment on the 800x240 GPU fallback.
-- `resource/`: CIA spec, icon, banner, banner sound.
+- `resource/`: CIA spec, icon, banner (3D model + flat fallback), banner sound.
