@@ -40,7 +40,10 @@ next connection (`tools/logs/`).
 - Install a build: `tools/serve_cia.sh`, then `open 3ds/build/cia_qr.png`. On the 3DS: FBI → Remote
   Install → Scan QR Code. Afterwards stop the server with `pkill -f "http.server 8080"`.
 - The 3DS's IP is shown on its bottom screen (it has been 192.168.1.95). Stream to it with
-  `python3 tools/send_test.py --host <IP> [--source X_sbs.mp4 --sbs --loop]`.
+  `python3 tools/send_test.py --host <IP> [--source X_sbs.mp4 --sbs --loop]`. The user's
+  spatial video, proven on the device:
+  `python3 tools/send_test.py --host 192.168.1.95 --source Video/IMG_5841_sbs.mp4 --sbs --loop --bitrate 1500k`
+  (`Video/` is gitignored; new spatial videos go through `tools/spatial_to_3ds.sh` first).
 - Files to the SD card: the user opens ftpd (port 5000), then
   `curl --ftp-create-dirs -T file ftp://<IP>:5000/<path>`. Converted spatial videos go in
   `/videos/` and play locally with topos.
