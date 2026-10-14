@@ -6,7 +6,6 @@
 *.cia
 3ds/.tools/
 # Xcode
-visionos/*.xcodeproj/
 DerivedData/
 xcuserdata/
 .build/

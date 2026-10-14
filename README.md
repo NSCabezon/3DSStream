@@ -1,8 +1,8 @@
 # 3D Streaming
 
 Stream stereoscopic 3D video and audio to a **New Nintendo 3DS**, shown glasses-free on its
-top screen. The sender is a visionOS app using the **S3DSKit** Swift package, or a Mac script
-for testing and for playing your own spatial videos.
+top screen. The sender is a visionOS app using the **[S3DSKit](https://github.com/NSCabezon/S3DSKit)**
+Swift package, or a Mac script for testing and for playing your own spatial videos.
 
 ```
  visionOS app + S3DSKit ──┐                                 ┌── New 3DS: "3D Streaming" (CIA)
@@ -16,7 +16,6 @@ Measured on a New 3DS XL: **29.9 stereo pairs/s** (60 decoded frames/s), 0 decod
 | Directory | What |
 |---|---|
 | [`3ds/`](3ds/README.md) | The 3DS receiver (C, libctru). Builds `3DSStream.cia` / `.3dsx`. |
-| [`visionos/`](visionos/README.md) | **S3DSKit**, the sender library for visionOS apps. |
 | [`tools/`](tools/README.md) | Mac tools: test sender, fake 3DS, QR install server, spatial-video converter. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Video format, wire protocol, hardware findings. Read this before changing anything on the wire. |
 | `branding/` | Logo as an Icon Composer `.icon` (depth layers). |
@@ -27,7 +26,7 @@ Measured on a New 3DS XL: **29.9 stereo pairs/s** (60 decoded frames/s), 0 decod
   has no hardware H.264 decoder and is not supported.
 - `sdmc:/3ds/dspfirm.cdc` on the SD card for audio (dump it once with the DSP1 homebrew).
 - The 3DS and the sender on the same WiFi network.
-- To build: macOS with Xcode 27 (visionOS), devkitPro with `3ds-dev` and `3ds-libopus`, Python 3,
+- To build: macOS, devkitPro with `3ds-dev` and `3ds-libopus`, Python 3,
   ffmpeg (Homebrew) and qrencode (`brew install qrencode`).
 
 ## Quick start
@@ -59,16 +58,17 @@ uploaded to `sdmc:/videos/` via ftpd running on the 3DS (port 5000).
 
 ## Streaming from a visionOS app
 
-Add the `visionos/` package by local path. If your app already renders one texture per eye, you
-need one line per frame and one per audio buffer:
+Add **[S3DSKit](https://github.com/NSCabezon/S3DSKit)** (separate repository) to your app with Swift
+Package Manager. If your app already renders one texture per eye, you need one line per frame
+and one per audio buffer:
 
 ```swift
-streamer.connect(host: "192.168.1.95", port: 7777)
+streamer.connect(host: "<3DS IP>", port: 7777)
 streamer.submit(left: leftEye, right: rightEye, commandBuffer: cb)   // any size, letterboxed to 400x240
 streamer.submitAudio(samples: buf, channels: 1, sampleRate: 48_000)  // safe on the audio thread
 ```
 
-The defaults are the settings proven on hardware. The [S3DSKit README](visionos/README.md) covers
+The defaults are the settings proven on hardware. The [S3DSKit README](https://github.com/NSCabezon/S3DSKit#readme) covers
 Metal/Compositor Services, RealityKit and threading.
 
 ## What we learned on the hardware
@@ -102,3 +102,11 @@ These are the things that broke and why; the details are in
 | "Audio: no DSP firmware" | `sdmc:/3ds/dspfirm.cdc` is missing. |
 | Audio stutters | The bottom-screen `Audio:` line: level ≈ 200 ms, U (underruns) and D (drops) ≈ 0. |
 | Anything else | The 3DS writes `sdmc:/3ds/3DSStream/log.txt` and uploads the previous session's log to `send_test.py` on the next connection, saved in `tools/logs/`. |
+
+## License
+
+MIT, see [LICENSE](LICENSE). The bundled fonts in `3ds/resource/fonts/` are under the SIL Open
+Font License (see the OFL files next to them).
+
+This project is not affiliated with or endorsed by Nintendo. "Nintendo 3DS" and "New Nintendo 3DS"
+are trademarks of Nintendo. It runs on consoles with custom firmware; use it on hardware you own.

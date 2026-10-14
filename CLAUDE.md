@@ -1,14 +1,14 @@
 # 3DSStream: notes for Claude
 
-Read `README.md` and `docs/ARCHITECTURE.md` first. ARCHITECTURE is the contract between the three
-parts (`3ds/`, `visionos/`, `tools/`). Any wire or format change updates ARCHITECTURE and every
-part in the same change.
+Read `README.md` and `docs/ARCHITECTURE.md` first. ARCHITECTURE is the contract between this repo
+(`3ds/` receiver, `tools/`) and the sender library **S3DSKit**, a separate repo at `~/Apps/S3DSKit`
+that keeps a copy as `docs/PROTOCOL.md`. Any wire or format change updates ARCHITECTURE here, the
+receiver, the tools, S3DSKit and its PROTOCOL.md copy.
 
 ## Hard rules (learned on hardware, each one crashed or broke the 3DS)
 
 - H.264 must be **exactly one slice per frame**. Multi-slice frames crash the `mvd` sysmodule.
-  x264 needs `sliced-threads=0:slices=1`; VideoToolbox needs `NumberOfSlices = 1`. Never remove
-  the per-frame slice check in `H264Encoder.swift`.
+  x264 needs `sliced-threads=0:slices=1`; VideoToolbox needs `NumberOfSlices = 1` (S3DSKit does it).
 - Alternating 240×400 pre-rotated eyes, IDR only on LEFT frames, Baseline, no B-frames,
   ≤ 256 KiB per AU, 1.5 Mbps default.
 - Feed SPS/PPS to MVD once (dedupe in `3ds/source/decode.c`).
@@ -24,9 +24,6 @@ part in the same change.
 cd 3ds && export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM PATH="$PWD/.tools:$PATH"
 make && make cia && python3 scripts/verify_cia_banner.py 3DSStream.cia resource/banner.cgfx
 
-# S3DSKit
-cd visionos && xcodebuild test -scheme S3DSKit -destination 'platform=visionOS Simulator,name=Apple Vision Pro'
-
 # Tools smoke test (fake 3DS + fake sender on localhost)
 python3 tools/recv_sim.py --no-play --out /tmp/x.h264 & python3 tools/send_test.py --host 127.0.0.1
 ```
@@ -39,10 +36,10 @@ next connection (`tools/logs/`).
 
 - Install a build: `tools/serve_cia.sh`, then `open 3ds/build/cia_qr.png`. On the 3DS: FBI → Remote
   Install → Scan QR Code. Afterwards stop the server with `pkill -f "http.server 8080"`.
-- The 3DS's IP is shown on its bottom screen (it has been 192.168.1.95). Stream to it with
+- The 3DS's IP is shown on its bottom screen. Stream to it with
   `python3 tools/send_test.py --host <IP> [--source X_sbs.mp4 --sbs --loop]`. The user's
   spatial video, proven on the device:
-  `python3 tools/send_test.py --host 192.168.1.95 --source Video/IMG_5841_sbs.mp4 --sbs --loop --bitrate 1500k`
+  `python3 tools/send_test.py --host <IP> --source Video/<name>_sbs.mp4 --sbs --loop --bitrate 1500k`
   (`Video/` is gitignored; new spatial videos go through `tools/spatial_to_3ds.sh` first).
 - Files to the SD card: the user opens ftpd (port 5000), then
   `curl --ftp-create-dirs -T file ftp://<IP>:5000/<path>`. Converted spatial videos go in
@@ -63,14 +60,14 @@ the user finds realistic: they have no 3D display.
 ## Status (2026-10-14)
 
 Done and confirmed on hardware: the receiver (video + Opus audio + 3D HOME banner), S3DSKit, and
-the tools. Still pending:
-- integrating S3DSKit into `~/Apps/tc-visionos` (`FramePump.pump` + core audio). Don't touch that
-  repo without the user's OK.
+the tools. Split into two repos, both MIT (this one and `~/Apps/S3DSKit`). Still pending:
+- integrating S3DSKit into the user's own visionOS app. Don't touch other
+  repos without the user's OK.
 - checking on a real Vision Pro that the hardware H.264 encoder outputs one slice per frame. A
   DEBUG build asserts in `H264Encoder` if it doesn't.
 
 ## Delegation
 
 - Delegation to `fast-worker` is fine for: tools/ scripts, docs, banner art.
-- Not for: `3ds/source` (MVD, cache maintenance, threads), `H264Encoder` / `StreamEngine`
-  (concurrency, VideoToolbox). Use `general-purpose` or `deep-reasoner` there.
+- Not for: `3ds/source` (MVD, cache maintenance, threads). Use `general-purpose` or
+  `deep-reasoner` there.
