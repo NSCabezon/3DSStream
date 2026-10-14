@@ -1,206 +1,217 @@
-# makerom spec for 3DSStream.cia (based on topos_3ds-video-player's app.rsf, trimmed).
+# makerom Rom Specification File for the 3DSStream CIA (`make cia`).
 #
-# IMPORTANT: the hardware H.264 decoder only works from a .cia if this file grants
-# mvd:STD in ServiceAccessControl AND lists the mvd module (0x0004013020004102) under
-# Dependency. Core_2_Extreme's Video player had "hardware decoder does not work in .cia"
-# for exactly that reason; topos fixed it by adding both. Same for soc:U + socket module.
+# Written from makerom's documentation and its RSF parser (github.com/3DSGuy/Project_CTR,
+# makerom/src/rsf_settings.c, exheader.c) and the 3dbrew "NCCH/Extended Header" page.
+# The Makefile substitutes the $(...) variables through makerom's -D<KEY>=<VALUE> flags:
+#   APP_TITLE, APP_PRODUCT_CODE, APP_UNIQUE_ID, APP_VERSION_MAJOR.
+# No -desc template is used, so every access-control field below is spelled out.
 
 BasicInfo:
-  Title                   : $(APP_TITLE)
-  ProductCode             : $(APP_PRODUCT_CODE)
-  Logo                    : Homebrew
+  Title:        "$(APP_TITLE)"      # exheader process name (first 8 bytes)
+  ProductCode:  "$(APP_PRODUCT_CODE)"
+  ContentType:  Application
+  Logo:         Homebrew            # boot logo, stored in the ExeFS (makerom -exefslogo)
 
 TitleInfo:
-  Category                : Application
-  UniqueId                : $(APP_UNIQUE_ID)
+  Category:     Application         # title id high word 0x00040000
+  UniqueId:     $(APP_UNIQUE_ID)    # title id 0x00040000_0UUUUU00
 
 Option:
-  UseOnSD                 : true
-  FreeProductCode         : true
-  MediaFootPadding        : false
-  EnableCrypt             : false
-  EnableCompress          : true
-
-AccessControlInfo:
-  CoreVersion                   : 2
-  DescVersion                   : 2
-  ReleaseKernelMajor            : "02"
-  ReleaseKernelMinor            : "44"
-
-  UseExtSaveData                : false
-
-  FileSystemAccess:
-   - DirectSdmc
-   - DirectSdmcWrite
-
-  # Process Settings
-  MemoryType                    : Application
-  SystemMode                    : 64MB
-  IdealProcessor                : 0
-  AffinityMask                  : 1
-  Priority                      : 16
-  MaxCpu                        : 0xFF
-  HandleTableSize               : 0x200
-  DisableDebug                  : false
-  EnableForceDebug              : false
-  CanWriteSharedPage            : true
-  CanUsePrivilegedPriority      : false
-  CanUseNonAlphabetAndNumber    : true
-  PermitMainFunctionArgument    : true
-  CanShareDeviceMemory          : true
-  RunnableOnSleep               : false
-  SpecialMemoryArrange          : true
-
-  # New3DS exclusive process settings (the app refuses to run on Old 3DS anyway)
-  SystemModeExt                 : 124MB
-  CpuSpeed                      : 804MHz
-  EnableL2Cache                 : true
-  CanAccessCore2                : true
-
-  IORegisterMapping:
-   - 1ff00000-1ff7ffff   # DSP memory
-  MemoryMapping:
-   - 1f000000-1f5fffff:r # VRAM
-
-  SystemCallAccess: 
-    ControlMemory: 1
-    QueryMemory: 2
-    ExitProcess: 3
-    GetProcessAffinityMask: 4
-    SetProcessAffinityMask: 5
-    GetProcessIdealProcessor: 6
-    SetProcessIdealProcessor: 7
-    CreateThread: 8
-    ExitThread: 9
-    SleepThread: 10
-    GetThreadPriority: 11
-    SetThreadPriority: 12
-    GetThreadAffinityMask: 13
-    SetThreadAffinityMask: 14
-    GetThreadIdealProcessor: 15
-    SetThreadIdealProcessor: 16
-    GetCurrentProcessorNumber: 17
-    Run: 18
-    CreateMutex: 19
-    ReleaseMutex: 20
-    CreateSemaphore: 21
-    ReleaseSemaphore: 22
-    CreateEvent: 23
-    SignalEvent: 24
-    ClearEvent: 25
-    CreateTimer: 26
-    SetTimer: 27
-    CancelTimer: 28
-    ClearTimer: 29
-    CreateMemoryBlock: 30
-    MapMemoryBlock: 31
-    UnmapMemoryBlock: 32
-    CreateAddressArbiter: 33
-    ArbitrateAddress: 34
-    CloseHandle: 35
-    WaitSynchronization1: 36
-    WaitSynchronizationN: 37
-    SignalAndWait: 38
-    DuplicateHandle: 39
-    GetSystemTick: 40
-    GetHandleInfo: 41
-    GetSystemInfo: 42
-    GetProcessInfo: 43
-    GetThreadInfo: 44
-    ConnectToPort: 45
-    SendSyncRequest1: 46
-    SendSyncRequest2: 47
-    SendSyncRequest3: 48
-    SendSyncRequest4: 49
-    SendSyncRequest: 50
-    OpenProcess: 51
-    OpenThread: 52
-    GetProcessId: 53
-    GetProcessIdOfThread: 54
-    GetThreadId: 55
-    GetResourceLimit: 56
-    GetResourceLimitLimitValues: 57
-    GetResourceLimitCurrentValues: 58
-    GetThreadContext: 59
-    Break: 60
-    OutputDebugString: 61
-    ControlPerformanceCounter: 62
-    CreatePort: 71
-    CreateSessionToPort: 72
-    CreateSession: 73
-    AcceptSession: 74
-    ReplyAndReceive1: 75
-    ReplyAndReceive2: 76
-    ReplyAndReceive3: 77
-    ReplyAndReceive4: 78
-    ReplyAndReceive: 79
-    BindInterrupt: 80
-    UnbindInterrupt: 81
-    InvalidateProcessDataCache: 82
-    StoreProcessDataCache: 83
-    FlushProcessDataCache: 84
-    StartInterProcessDma: 85
-    StopDma: 86
-    GetDmaState: 87
-    RestartDma: 88
-    DebugActiveProcess: 96
-    BreakDebugProcess: 97
-    TerminateDebugProcess: 98
-    GetProcessDebugEvent: 99
-    ContinueDebugEvent: 100
-    GetProcessList: 101
-    GetThreadList: 102
-    GetDebugThreadContext: 103
-    SetDebugThreadContext: 104
-    QueryDebugProcessMemory: 105
-    ReadProcessMemory: 106
-    WriteProcessMemory: 107
-    SetHardwareBreakPoint: 108
-    GetDebugThreadParam: 109
-    ControlProcessMemory: 112
-    MapProcessMemory: 113
-    UnmapProcessMemory: 114
-    CreateCodeSet: 115
-    CreateProcess: 117
-    TerminateProcess: 118
-    SetProcessResourceLimits: 119
-    CreateResourceLimit: 120
-    SetResourceLimitValues: 121
-    AddCodeSegment: 122
-    Backdoor: 123
-    KernelSetState: 124
-    QueryProcessMemory: 125
-
-  # Service List (max 34)
-  ServiceAccessControl:
-   - APT:U
-   - ac:u
-   - cfg:u
-   - dsp::DSP
-   - fs:USER
-   - gsp::Gpu
-   - gsp::Lcd
-   - hid:USER
-   - mvd:STD
-   - ndm:u
-   - nwm::EXT
-   - ptm:u
-   - soc:U
+  UseOnSD:          true            # installed to the SD card
+  FreeProductCode:  true            # product code does not need the CTR-X-XXXX retail form
+  EnableCompress:   true            # LZ-compress the .code section
+  EnableCrypt:      false           # homebrew CIA: NCCH left unencrypted
+  MediaFootPadding: false
 
 SystemControlInfo:
-  SaveDataSize: 0KB
-  RemasterVersion: $(APP_VERSION_MAJOR)
-  StackSize: 0x40000
+  SaveDataSize:     0K
+  RemasterVersion:  $(APP_VERSION_MAJOR)
+  StackSize:        0x40000         # main thread stack (256 KiB)
 
-  # Modules that run the services above (max 48)
+  # System modules that must be running before the app starts (title ids from 3dbrew
+  # "Title list"). The list mirrors the services used below.
   Dependency:
-    ac: 0x0004013000002402
-    cfg: 0x0004013000001702
-    dsp: 0x0004013000001a02
-    gsp: 0x0004013000001c02
-    hid: 0x0004013000001d02
-    mvd: 0x0004013020004102
-    ndm: 0x0004013000002b02
-    nwm: 0x0004013000002d02
-    ptm: 0x0004013000002202
+    ac:     0x0004013000002402
+    cfg:    0x0004013000001702
+    dsp:    0x0004013000001a02
+    gsp:    0x0004013000001c02
+    hid:    0x0004013000001d02
+    # New 3DS hardware video decoder module. A 3dsx inherits mvd from the Homebrew
+    # Launcher's process, but an installed title only gets what its own exheader asks
+    # for: without this dependency plus "mvd:STD" in ServiceAccessControl, mvdstdInit()
+    # fails and hardware H.264 decoding is unavailable in the CIA build.
+    mvd:    0x0004013020004102
+    ndm:    0x0004013000002b02
+    nwm:    0x0004013000002d02
+    ptm:    0x0004013000002202
     socket: 0x0004013000002e02
+
+AccessControlInfo:
+  CoreVersion:            2
+  DescVersion:            2
+  ReleaseKernelMajor:     "02"
+  ReleaseKernelMinor:     "44"
+  ResourceLimitCategory:  Application
+  MemoryType:             Application
+
+  # Old 3DS: 64 MB application region. New 3DS: 124 MB region, 804 MHz and the L2 cache,
+  # which the decoder and the stereo renderer need.
+  SystemMode:     64MB
+  SystemModeExt:  124MB
+  CpuSpeed:       804MHz
+  EnableL2Cache:  true
+
+  IdealProcessor:   0
+  AffinityMask:     1
+  Priority:         16              # makerom adds 32 for applications -> 48
+  MaxCpu:           0xFF
+  HandleTableSize:  0x200
+
+  # Kernel flags
+  DisableDebug:               false
+  EnableForceDebug:           false
+  CanWriteSharedPage:         true
+  CanUsePrivilegedPriority:   false
+  CanUseNonAlphabetAndNumber: true
+  PermitMainFunctionArgument: true
+  CanShareDeviceMemory:       true
+  RunnableOnSleep:            false
+  SpecialMemoryArrange:       true
+  CanAccessCore2:             true    # lets the app run a worker thread on the syscore
+
+  UseExtSaveData:             false
+  UseOtherVariationSaveData:  false
+
+  FileSystemAccess:
+    - DirectSdmc
+    - DirectSdmcWrite
+
+  IORegisterMapping:
+    - 1ff00000-1ff7ffff             # DSP shared memory
+  MemoryMapping:
+    - 1f000000-1f5fffff:r           # VRAM, read-only
+
+  ServiceAccessControl:
+    - APT:U
+    - ac:u
+    - cfg:u
+    - dsp::DSP
+    - fs:USER
+    - gsp::Gpu
+    - gsp::Lcd
+    - hid:USER
+    - mvd:STD                       # New 3DS H.264 decoder (see the mvd dependency above)
+    - ndm:u
+    - nwm::EXT
+    - ptm:u
+    - soc:U
+
+  # Supervisor calls the process may issue (numbers from 3dbrew "SVC").
+  SystemCallAccess:
+    ControlMemory:                 0x01
+    QueryMemory:                   0x02
+    ExitProcess:                   0x03
+    GetProcessAffinityMask:        0x04
+    SetProcessAffinityMask:        0x05
+    GetProcessIdealProcessor:      0x06
+    SetProcessIdealProcessor:      0x07
+    CreateThread:                  0x08
+    ExitThread:                    0x09
+    SleepThread:                   0x0A
+    GetThreadPriority:             0x0B
+    SetThreadPriority:             0x0C
+    GetThreadAffinityMask:         0x0D
+    SetThreadAffinityMask:         0x0E
+    GetThreadIdealProcessor:       0x0F
+    SetThreadIdealProcessor:       0x10
+    GetCurrentProcessorNumber:     0x11
+    Run:                           0x12
+    CreateMutex:                   0x13
+    ReleaseMutex:                  0x14
+    CreateSemaphore:               0x15
+    ReleaseSemaphore:              0x16
+    CreateEvent:                   0x17
+    SignalEvent:                   0x18
+    ClearEvent:                    0x19
+    CreateTimer:                   0x1A
+    SetTimer:                      0x1B
+    CancelTimer:                   0x1C
+    ClearTimer:                    0x1D
+    CreateMemoryBlock:             0x1E
+    MapMemoryBlock:                0x1F
+    UnmapMemoryBlock:              0x20
+    CreateAddressArbiter:          0x21
+    ArbitrateAddress:              0x22
+    CloseHandle:                   0x23
+    WaitSynchronization1:          0x24
+    WaitSynchronizationN:          0x25
+    SignalAndWait:                 0x26
+    DuplicateHandle:               0x27
+    GetSystemTick:                 0x28
+    GetHandleInfo:                 0x29
+    GetSystemInfo:                 0x2A
+    GetProcessInfo:                0x2B
+    GetThreadInfo:                 0x2C
+    ConnectToPort:                 0x2D
+    SendSyncRequest1:              0x2E
+    SendSyncRequest2:              0x2F
+    SendSyncRequest3:              0x30
+    SendSyncRequest4:              0x31
+    SendSyncRequest:               0x32
+    OpenProcess:                   0x33
+    OpenThread:                    0x34
+    GetProcessId:                  0x35
+    GetProcessIdOfThread:          0x36
+    GetThreadId:                   0x37
+    GetResourceLimit:              0x38
+    GetResourceLimitLimitValues:   0x39
+    GetResourceLimitCurrentValues: 0x3A
+    GetThreadContext:              0x3B
+    Break:                         0x3C
+    OutputDebugString:             0x3D
+    ControlPerformanceCounter:     0x3E
+    CreatePort:                    0x47
+    CreateSessionToPort:           0x48
+    CreateSession:                 0x49
+    AcceptSession:                 0x4A
+    ReplyAndReceive1:              0x4B
+    ReplyAndReceive2:              0x4C
+    ReplyAndReceive3:              0x4D
+    ReplyAndReceive4:              0x4E
+    ReplyAndReceive:               0x4F
+    BindInterrupt:                 0x50
+    UnbindInterrupt:               0x51
+    InvalidateProcessDataCache:    0x52
+    StoreProcessDataCache:         0x53
+    FlushProcessDataCache:         0x54
+    StartInterProcessDma:          0x55
+    StopDma:                       0x56
+    GetDmaState:                   0x57
+    RestartDma:                    0x58
+    DebugActiveProcess:            0x60
+    BreakDebugProcess:             0x61
+    TerminateDebugProcess:         0x62
+    GetProcessDebugEvent:          0x63
+    ContinueDebugEvent:            0x64
+    GetProcessList:                0x65
+    GetThreadList:                 0x66
+    GetDebugThreadContext:         0x67
+    SetDebugThreadContext:         0x68
+    QueryDebugProcessMemory:       0x69
+    ReadProcessMemory:             0x6A
+    WriteProcessMemory:            0x6B
+    SetHardwareBreakPoint:         0x6C
+    GetDebugThreadParam:           0x6D
+    ControlProcessMemory:          0x70
+    MapProcessMemory:              0x71
+    UnmapProcessMemory:            0x72
+    CreateCodeSet:                 0x73
+    CreateProcess:                 0x75
+    TerminateProcess:              0x76
+    SetProcessResourceLimits:      0x77
+    CreateResourceLimit:           0x78
+    SetResourceLimitValues:        0x79
+    AddCodeSegment:                0x7A
+    Backdoor:                      0x7B
+    KernelSetState:                0x7C
+    QueryProcessMemory:            0x7D

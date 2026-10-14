@@ -190,8 +190,7 @@ static int read_mode_file(void)
     switch (c) {
     case 'A': return DEC_MODE_A;
     case 'B': return DEC_MODE_B;
-    case 'X': return DEC_MODE_X;
-    case 'Y': return DEC_MODE_Y;
+    case 'X': case 'Y': return DEC_MODE_B;   // removed modes
     default:  return -1;
     }
 }
@@ -200,7 +199,7 @@ static void write_mode_file(DecMode m)
 {
     FILE* f = fopen(MODE_PATH, "w");
     if (!f) return;
-    fputc("ABXY"[m], f);
+    fputc("AB"[m], f);
     fclose(f);
 }
 
@@ -237,7 +236,6 @@ static bool select_mode(const char* prev, u32 prev_len)
         printf("No previous log.\n");
     }
     printf("\n\x1b[36mA\x1b[0m direct-to-fb  \x1b[36mB\x1b[0m eye buf+memcpy\n");
-    printf("\x1b[36mX\x1b[0m topos AU 565   \x1b[36mY\x1b[0m topos AU ABGR32\n");
     printf("Hold L = slow motion. START = exit.\n");
     printf("Last choice: %s\n", last >= 0 ? decode_mode_name((DecMode)last) : "-");
     printf("Starting B in 1.5 s (any button = wait)");
@@ -252,11 +250,10 @@ static bool select_mode(const char* prev, u32 prev_len)
             slow_motion = false;
             return true;
         }
-        int m = (down & KEY_A) ? DEC_MODE_A : (down & KEY_B) ? DEC_MODE_B
-              : (down & KEY_X) ? DEC_MODE_X : (down & KEY_Y) ? DEC_MODE_Y : -1;
+        int m = (down & KEY_A) ? DEC_MODE_A : (down & KEY_B) ? DEC_MODE_B : -1;
         if (down && m < 0 && deadline) {
             deadline = 0;
-            printf("\r%-39s", "Waiting for A/B/X/Y...");
+            printf("\r%-39s", "Waiting for A/B...");
         }
         if (m >= 0) {
             dec_mode = (DecMode)m;

@@ -6,33 +6,29 @@
 #include "log.h"
 
 #define IN_BUF_SIZE      0x100000
-#define OUT_BUF_SIZE     (240 * 800 * 4)   // big enough for stacked ABGR32
+#define OUT_BUF_SIZE     (240 * 800 * 2)   // one stacked BGR565 frame
 #define MIN_LEVEL_IDC    31                // never size MVD below level 3.1
 #define RENDER_RETRIES   1000              // x 100 us
 #define PARAM_MAX        256
-// topos's ABGR32 output format (not named in libctru).
-#define MVD_OUTPUT_ABGR32 ((MVDSTD_OutputFormat)0x00041002)
 
 // FALLBACK (ARCHITECTURE "Fallback"): if MVD cannot handle the pre-rotated layouts at all,
 // switch the sender to plain 800x240 SBS (or 400x240 alternating unrotated), decode into
 // `out_buf` at those dims, then upload it as GPU textures (citro3d/citro2d) and draw each
 // 400x240 eye to the left / right top-screen render targets instead of writing the
-// framebuffers directly. topos_3ds-video-player does exactly that (vid_texture.c / vid_draw.c).
+// framebuffers directly.
 
 static DecMode mode;
 static u8* in_buf;
-static u8* out_buf[2];       // per-eye MVD targets (B/X/Y); stacked uses [0], [1] = 565 copy (Y)
+static u8* out_buf[2];       // per-eye MVD targets (mode B); stacked uses [0]
 static const u8* stacked_out;
 // Last SPS / PPS handed to MVD (modes A/B). Senders repeat them before every IDR, but MVD
 // must see each parameter set only once: re-feeding identical SPS/PPS every keyframe was
-// suspected of crashing the mvd sysmodule. topos also feeds them once.
+// suspected of crashing the mvd sysmodule.
 static u8  last_param[2][PARAM_MAX];
 static u32 last_param_len[2];
-static bool params_fed;      // modes X/Y: SPS/PPS already fed for this MVD instance
-static bool first_frame;     // modes X/Y: topos feeds the very first AU twice
 static MVDSTD_Config cfg;
 static DecLayout cur_layout;
-static u32 out_w, out_h, out_bpp;
+static u32 out_w, out_h;
 static u32 au_index;
 static DecInfo info = { .last_step = "-" };
 
@@ -47,9 +43,7 @@ const char* decode_mode_name(DecMode m)
 {
     switch (m) {
     case DEC_MODE_A: return "A direct-to-fb";
-    case DEC_MODE_B: return "B eye-buf+memcpy";
-    case DEC_MODE_X: return "X topos AU 565";
-    default:         return "Y topos AU ABGR32";
+    default:         return "B eye-buf+memcpy";
     }
 }
 
@@ -121,15 +115,14 @@ static u8 level_code(u8 idc)
     }
 }
 
-// (Re)starts MVD with a work buffer sized for this resolution and level (as topos does).
+// (Re)starts MVD with a work buffer sized for this resolution and level.
 static bool mvd_start(DecLayout layout, u8 level_idc)
 {
     mvd_stop();
 
     out_w = 240;
     out_h = layout == DEC_LAYOUT_ALTERNATING ? 400 : 800;
-    out_bpp = mode == DEC_MODE_Y ? 4 : 2;
-    MVDSTD_OutputFormat fmt = mode == DEC_MODE_Y ? MVD_OUTPUT_ABGR32 : MVD_OUTPUT_BGR565;
+    MVDSTD_OutputFormat fmt = MVD_OUTPUT_BGR565;
 
     MVDSTD_CalculateWorkBufSizeConfig calc;
     memset(&calc, 0, sizeof(calc));
@@ -176,8 +169,6 @@ static bool mvd_start(DecLayout layout, u8 level_idc)
     cfg.output_type = fmt;
 
     last_param_len[0] = last_param_len[1] = 0;   // fresh MVD instance needs SPS/PPS again
-    params_fed = false;
-    first_frame = true;
     info.ready = true;
     info.workbuf_size = size;
     info.level_idc = level_idc;
@@ -322,7 +313,7 @@ static DecResult decode_nal_by_nal(const u8* au, u32 size, u8* target, u32 bytes
     // of it first: a dirty line evicted later would overwrite part of the decoded picture.
     GSPGPU_InvalidateDataCache(target, bytes);
     // Point MVD at the target before feeding NALs: it may write the picture during
-    // mvdstdProcessVideoFrame, not only in mvdstdRenderVideoFrame (seen in topos).
+    // mvdstdProcessVideoFrame, not only in mvdstdRenderVideoFrame.
     Result r = set_config(target);
     if (r != MVD_STATUS_OK) {
         set_error("setconfig", r);
@@ -334,143 +325,6 @@ static DecResult decode_nal_by_nal(const u8* au, u32 size, u8* target, u32 bytes
 }
 
 // ---------------------------------------------------------------------------
-// Modes X / Y: topos-style (decoder_mvd.c). SPS/PPS fed once as separate calls, then
-// every AU's slices concatenated (each with 00 00 01) into ONE ProcessVideoFrame call.
-// Frame output is detected by marker bytes in the 4 corners of the output buffer.
-
-typedef struct {
-    u32  off;
-    bool fed_sps, fed_pps;
-} PackCtx;
-
-static int feed_param_once(const u8* nal, u32 len, void* p)
-{
-    PackCtx* ctx = p;
-    u8 type = nal[0] & 0x1F;
-    bool* fed = type == 7 ? &ctx->fed_sps : type == 8 ? &ctx->fed_pps : NULL;
-    if (!fed || *fed || len + 3 > IN_BUF_SIZE) return 0;
-    in_buf[0] = 0; in_buf[1] = 0; in_buf[2] = 1;
-    memcpy(in_buf + 3, nal, len);
-    Result r = process(len + 3, type == 7 ? "SPS" : "PPS");
-    if (!MVD_CHECKNALUPROC_SUCCESS(r)) {
-        set_error("process-param", r);
-        return -1;
-    }
-    *fed = true;
-    return 0;
-}
-
-static int pack_slices(const u8* nal, u32 len, void* p)
-{
-    PackCtx* ctx = p;
-    u8 type = nal[0] & 0x1F;
-    if (type != 1 && type != 5) return 0;
-    if (ctx->off + 3 + len > IN_BUF_SIZE) return -1;
-    u8* d = in_buf + ctx->off;
-    d[0] = 0; d[1] = 0; d[2] = 1;
-    memcpy(d + 3, nal, len);
-    ctx->off += 3 + len;
-    return 0;
-}
-
-static void corners(u32* idx)
-{
-    u32 row = out_w * out_bpp, total = row * out_h;
-    idx[0] = 0; idx[1] = row - 1; idx[2] = total - row; idx[3] = total - 1;
-}
-
-static bool markers_changed(u8* buf, u32 bytes)
-{
-    u32 c[4];
-    corners(c);
-    GSPGPU_InvalidateDataCache(buf, bytes);
-    for (int i = 0; i < 4; i++)
-        if (buf[c[i]] != 0x11) return true;
-    return false;
-}
-
-static DecResult decode_topos(const u8* au, u32 size, bool keyframe, u8* buf)
-{
-    u32 bytes = out_w * out_h * out_bpp;
-
-    if (!params_fed) {
-        if (!keyframe) return DEC_ERROR;
-        PackCtx pc = { 0, false, false };
-        if (for_each_nal(au, size, feed_param_once, &pc) < 0) return DEC_ERROR;
-        if (!pc.fed_sps || !pc.fed_pps) {
-            log_line("first IDR without SPS/PPS");
-            return DEC_ERROR;
-        }
-        params_fed = true;
-    }
-
-    PackCtx pc = { 0, false, false };
-    if (for_each_nal(au, size, pack_slices, &pc) < 0) {
-        set_error("pack", -1);
-        return DEC_ERROR;
-    }
-    if (pc.off == 0) return DEC_NO_FRAME;
-
-    // Corner markers, then write back the whole buffer so MVD's output is not overwritten
-    // by dirty cache lines later.
-    u32 c[4];
-    corners(c);
-    for (int i = 0; i < 4; i++) buf[c[i]] = 0x11;
-    GSPGPU_FlushDataCache(buf, bytes);
-
-    Result r = set_config(buf);
-    if (r != MVD_STATUS_OK) {
-        set_error("setconfig", r);
-        return DEC_ERROR;
-    }
-
-    r = process(pc.off, "AU");
-    if (first_frame) {
-        // topos: "Do I need to send same nal data at first frame?" -- it does, so do we.
-        r = process(pc.off, "AU (first, again)");
-        first_frame = false;
-    }
-    bool got = markers_changed(buf, bytes);
-    log_line("markers after process: %s", got ? "changed" : "unchanged");
-    if (!MVD_CHECKNALUPROC_SUCCESS(r)) {
-        set_error("process-au", r);
-        return DEC_ERROR;
-    }
-
-    if (!got) {
-        // topos calls mvdstdRenderVideoFrame(NULL, false) with a custom libctru. The installed
-        // libctru 2.7.0 returns -1 for NULL (despite its header comment; checked in the
-        // disassembly), so pass the same cfg MVDSTD_SetConfig just applied.
-        log_line("-> render(cfg) loop");
-        int i = 0;
-        r = MVD_STATUS_BUSY;
-        for (; i < RENDER_RETRIES; i++) {
-            r = mvdstdRenderVideoFrame(&cfg, false);
-            got = markers_changed(buf, bytes);
-            if (got || r != MVD_STATUS_BUSY) break;
-            svcSleepThread(100000);
-        }
-        log_line("<- render(cfg) ret=0x%08lx tries=%d markers=%s", (unsigned long)r, i + 1,
-                 got ? "changed" : "unchanged");
-        if (!got && r != MVD_STATUS_OK) {
-            set_error("render-loop", r);
-            return DEC_ERROR;
-        }
-    }
-    return got ? DEC_FRAME : DEC_NO_FRAME;
-}
-
-// ---------------------------------------------------------------------------
-
-// ABGR32 from MVD (bytes A,B,G,R per pixel) -> BGR565 as used by the framebuffer.
-static void abgr_to_565(const u8* src, u8* dst, u32 pixels)
-{
-    u16* d = (u16*)dst;
-    for (u32 i = 0; i < pixels; i++, src += 4) {
-        u8 b = src[1], g = src[2], r = src[3];
-        d[i] = (u16)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
-    }
-}
 
 DecResult decode_au(const u8* au, u32 size, DecLayout layout, bool keyframe, int eye, u8* dst)
 {
@@ -494,28 +348,17 @@ DecResult decode_au(const u8* au, u32 size, DecLayout layout, bool keyframe, int
     u8* buf = out_buf[alt ? (eye ? 1 : 0) : 0];
     DecResult r;
 
-    if (mode == DEC_MODE_A || mode == DEC_MODE_B) {
-        u8* target = (mode == DEC_MODE_A && alt) ? dst : buf;
-        r = decode_nal_by_nal(au, size, target, out_w * out_h * 2);
-        if (r == DEC_FRAME && target == buf) GSPGPU_InvalidateDataCache(buf, out_w * out_h * 2);
-    } else {
-        r = decode_topos(au, size, keyframe, buf);   // leaves buf cache-coherent for the CPU
-    }
+    u8* target = (mode == DEC_MODE_A && alt) ? dst : buf;
+    r = decode_nal_by_nal(au, size, target, out_w * out_h * 2);
     if (r != DEC_FRAME) return r;
+    if (target == dst) return DEC_FRAME;   // mode A: MVD wrote the framebuffer itself
 
-    if (mode == DEC_MODE_A && alt) return DEC_FRAME;   // MVD wrote the framebuffer itself
-
-    const u8* pic = buf;
-    if (mode == DEC_MODE_Y) {
-        u8* conv = alt ? dst : out_buf[1];
-        abgr_to_565(buf, conv, out_w * out_h);
-        pic = conv;
-    }
+    GSPGPU_InvalidateDataCache(buf, out_w * out_h * 2);   // MVD wrote it behind the cache
     if (alt) {
-        if (pic != dst) memcpy(dst, pic, DEC_EYE_BYTES);
+        memcpy(dst, buf, DEC_EYE_BYTES);
         GSPGPU_FlushDataCache(dst, DEC_EYE_BYTES);   // framebuffer is cached linear memory
     } else {
-        stacked_out = pic;
+        stacked_out = buf;
     }
     return DEC_FRAME;
 }

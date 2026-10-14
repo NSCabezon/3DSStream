@@ -16,8 +16,6 @@ typedef enum {
 typedef enum {
     DEC_MODE_A,  // NAL by NAL, MVD writes straight into the eye framebuffer
     DEC_MODE_B,  // NAL by NAL, MVD writes a per-eye linear buffer, memcpy to framebuffer
-    DEC_MODE_X,  // topos-style: whole AU per ProcessVideoFrame, marker-pixel detection, BGR565
-    DEC_MODE_Y,  // as X but MVD outputs ABGR32, converted to BGR565 on the CPU
 } DecMode;
 
 typedef enum {
@@ -40,7 +38,7 @@ const char* decode_mode_name(DecMode mode);
 
 // Decodes one access unit.
 //  alternating: `dst` is the eye's top framebuffer; on DEC_FRAME it holds the picture
-//               (written by MVD in mode A, copied there in B/X/Y; cache already flushed).
+//               (written by MVD in mode A, copied there in B; cache already flushed).
 //  stacked:     `dst` is ignored; on DEC_FRAME the BGR565 240x800 picture is in
 //               decode_stacked_output().
 DecResult   decode_au(const u8* au, u32 size, DecLayout layout, bool keyframe, int eye, u8* dst);
