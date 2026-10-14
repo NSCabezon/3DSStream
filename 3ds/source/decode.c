@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "log.h"
+#include "sps.h"
 
 #define IN_BUF_SIZE      0x100000
 #define OUT_BUF_SIZE     (240 * 800 * 2)   // one stacked BGR565 frame
@@ -268,6 +269,32 @@ static int feed_nal(const u8* nal, u32 len, void* p)
     if (type != 1 && type != 5 && type != 7 && type != 8) {
         log_line("skip nal type=%u len=%lu", type, (unsigned long)len);
         return 0;
+    }
+
+    if (type == 7) {
+        // Make MVD output every picture immediately (see sps.h): an SPS without
+        // bitstream_restriction lets it hold pictures in its DPB, which desyncs the
+        // alternating eyes. The rewritten bytes are what gets compared, cached and fed.
+        static u8 patched[SPS_OUT_BYTES];
+        size_t plen = 0;
+        SpsInfo si;
+        SpsResult sr = sps_rewrite(nal, len, patched, sizeof(patched), &plen, &si);
+        const u8* use = sr == SPS_REWRITTEN ? patched : nal;
+        u32 use_len = sr == SPS_REWRITTEN ? (u32)plen : len;
+        bool is_new = !(use_len <= PARAM_MAX && use_len == last_param_len[0] &&
+                        memcmp(use, last_param[0], use_len) == 0);
+        if (is_new) {
+            if (sr == SPS_REWRITTEN)
+                log_line("sps: restriction added (refs=%lu, poc=%lu)", (unsigned long)si.max_num_ref_frames,
+                         (unsigned long)si.pic_order_cnt_type);
+            else if (sr == SPS_ALREADY_OK)
+                log_line("sps: already ok (refs=%lu)", (unsigned long)si.max_num_ref_frames);
+            else
+                log_line("sps: parse failed, unchanged (len=%lu)", (unsigned long)len);
+        }
+        nal = use;
+        len = use_len;
+        if (len + 3 > IN_BUF_SIZE) return 0;
     }
 
     if (type == 7 || type == 8) {

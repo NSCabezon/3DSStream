@@ -191,7 +191,7 @@ ifneq ($(ROMFS),)
 	export _3DSXFLAGS += --romfs=$(CURDIR)/$(ROMFS)
 endif
 
-.PHONY: all clean cia
+.PHONY: all clean cia test-host
 
 all: $(BUILD) $(GFXBUILD) $(DEPSDIR) $(ROMFS_T3XFILES) $(T3XHFILES)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
@@ -221,6 +221,11 @@ cia: all
 		-DAPP_TITLE="$(APP_TITLE)" -DAPP_PRODUCT_CODE="$(APP_PRODUCT_CODE)" \
 		-DAPP_UNIQUE_ID="$(APP_UNIQUE_ID)" -DAPP_VERSION_MAJOR="$(APP_VERSION_MAJOR)"
 	@echo built ... $(TARGET).cia
+
+#---------------------------------------------------------------------------------
+# Host (Mac) tests for the SPS rewriter: cc + ffmpeg, no 3DS toolchain involved.
+test-host:
+	@./tests/run_tests.sh
 
 #---------------------------------------------------------------------------------
 clean:

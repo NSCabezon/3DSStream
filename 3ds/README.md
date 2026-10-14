@@ -92,10 +92,20 @@ python3 tools/send_test.py --host <3DS IP>                    # alternating
 python3 tools/send_test.py --host <3DS IP> --layout stacked   # 240x800
 ```
 
+## Host tests
+
+`make test-host` (or `tests/run_tests.sh`) builds the SPS rewriter with the Mac's `cc` and
+checks it on captured VideoToolbox, x264 and synthetic SPSs, then rewrites whole x264 and
+`h264_videotoolbox` streams and verifies with ffmpeg that the frames decode identically and
+the SPS carries `bitstream_restriction` with `max_num_reorder_frames = 0`. Needs ffmpeg.
+
 ## Code map
 
 - `source/main.c`: setup, main loop (decode + present), status screen.
 - `source/net.c`: soc:U, network thread, S3DS framing, AU queue and drop/keyframe policy.
+- `source/sps.c`: SPS rewriter. Adds `bitstream_restriction` (no reordering) to any SPS that
+  lacks it, so MVD outputs each picture immediately and the alternating eyes stay in sync
+  with any encoder (VideoToolbox's SPS does not have it).
 - `source/decode.c`: MVD wrapper (Annex-B NAL split, cache maintenance, render to a
   240x800 BGR565 buffer). It has a comment on the 800x240 GPU fallback.
 - `resource/`: CIA spec, icon, banner (3D model + flat fallback), banner sound.

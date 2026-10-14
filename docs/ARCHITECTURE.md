@@ -90,6 +90,12 @@ Rules:
   defaults to one slice per thread) return INCOMPLETEPROCESSING / 0x17005 and the next IDR
   crashes the `mvd` sysmodule. Senders MUST emit exactly one slice per frame
   (x264: `sliced-threads=0:slices=1`).
+- **SPS must forbid picture reordering.** VideoToolbox's SPS (POC type 0, 2 refs) has a VUI
+  without `bitstream_restriction`, so MVD may hold decoded pictures in its DPB before output;
+  with alternating eyes the right eye then showed an older moment than the left (x264, which
+  signals `max_num_reorder_frames=0` / `max_dec_frame_buffering=1`, was fine). S3DSKit
+  rewrites its SPS, and the receiver patches every SPS too (`3ds/source/sps.c`): restriction
+  with `max_num_reorder_frames=0`, `max_dec_frame_buffering=max(1, max_num_ref_frames)`.
 - **SPS/PPS are fed to MVD once** (re-fed only if they change), although senders repeat them.
 - **WiFi delivers AUs in bursts.** The receiver allows up to 12 pending AUs (200 ms at 60 fps)
   before flushing to the next IDR; with 2 it dropped to ~1 fps. Receiver payload cap 256 KiB.
