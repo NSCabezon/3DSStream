@@ -34,16 +34,20 @@ The Makefile uses `makerom` / `bannertool` from `PATH` if they are there, otherw
 
 ### Banner
 
-The HOME Menu banner is a stereoscopic 3D model, `resource/banner.cgfx`: an extruded
-"3D" in front of the screen (it pops out with the 3D slider and sways gently),
-"STREAMING" at screen depth and a dark backdrop behind. Regenerate it with:
+The HOME Menu banner is a stereoscopic 3D model, `resource/banner.cgfx`: a compact dark
+rounded card (HOME Menu masks the banner area with an oval, so nothing is full-bleed)
+with an extruded "3D" and "STREAMING" on both faces. HOME Menu spins the model 360°, so
+it is static, centred on the vertical axis, readable from behind, and scaled to stay
+inside the oval at every angle. Regenerate it with:
 
 ```sh
-python3 scripts/make_banner_model.py --preview /tmp/banner_preview.png   # [--static: no sway]
+python3 scripts/make_banner_model.py --preview /tmp/banner_preview.png
+python3 scripts/make_banner_model.py --previews   # + preview/: anaglyph, side-by-side PNGs, banner.usdz
+                                                  #   (HOME oval mock-up + turntable spin)
 python3 scripts/verify_cia_banner.py 3DSStream.cia resource/banner.cgfx  # after make cia
 ```
 
-The script creates `.tools/venv` (fontTools, mapbox-earcut, gltflib, Pillow, numpy) and
+The script creates `.tools/venv` (fontTools, mapbox-earcut, gltflib, Pillow, numpy, usd-core) and
 clones [pycgfx](https://github.com/skyfloogle/pycgfx) at a pinned commit into
 `.tools/pycgfx` (no license, so it is not vendored), builds `.tools/banner.glb` from the
 Arial Black / DIN Condensed glyph outlines and converts it. The CGFX must stay under

@@ -16,3 +16,4 @@ __pycache__/
 *.h264
 Video/
 tools/logs/
+3ds/preview/
